@@ -5,6 +5,8 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Raft", "Raft\Raft.csproj", "{F9A51368-49EA-46AF-BDD9-37F3B486CEAC}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Raft.Tests", "Raft.Tests\Raft.Tests.csproj", "{F98C313F-1EF3-4821-A110-279E079367F9}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -18,5 +20,9 @@ Global
 		{F9A51368-49EA-46AF-BDD9-37F3B486CEAC}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F9A51368-49EA-46AF-BDD9-37F3B486CEAC}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F9A51368-49EA-46AF-BDD9-37F3B486CEAC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F98C313F-1EF3-4821-A110-279E079367F9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F98C313F-1EF3-4821-A110-279E079367F9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F98C313F-1EF3-4821-A110-279E079367F9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F98C313F-1EF3-4821-A110-279E079367F9}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

@@ -1,6 +1,6 @@
 namespace Raft;
 
-enum NodeState
+public enum NodeState
 {
   Follower,
   Candidate,
@@ -10,32 +10,45 @@ enum NodeState
 public class Node
 {
   public Guid Id { get; private set; }
-  NodeState State { get; set; }
-  int CurrentTerm { get; set; }
+  public NodeState State { get; set; }
+  public int CurrentTerm { get; set; }
 
   private readonly object logLock = new();
   readonly Random rng = new();
   readonly List<Node> NodeList = [];
+  ITimeProvider timeProvider;
   readonly string LogFileName;
   DateTime lastHeartbeatReceived;
   Guid votedFor;
   int electionTimeout;
+  bool isHealthy;
 
-  public Node(List<Node> allNodes)
+  public Node(List<Node> allNodes, ITimeProvider timeProvider, bool isHealthy)
   {
     Id = Guid.NewGuid();
     State = NodeState.Follower;
     CurrentTerm = 0;
     NodeList = allNodes;
     LogFileName = $"{Id}.log";
+    this.isHealthy = isHealthy;
+    this.timeProvider = timeProvider;
 
     LogEntry($"Node {Id} created");
+    LogEntry($"Node {Id} is {(isHealthy ? "healthy" : "not healthy")}.");
     SetElectionTimeout();
   }
 
   public void Initialize()
   {
-    while (true)
+    while (isHealthy)
+    {
+      Act();
+    }
+  }
+
+  public void Act()
+  {
+    if (isHealthy)
     {
       if (State == NodeState.Leader)
       {
@@ -116,7 +129,9 @@ public class Node
 
   bool Vote(Guid candidateId, int candidateTerm)
   {
-    if (candidateTerm > CurrentTerm || (candidateTerm == CurrentTerm && (votedFor == Guid.Empty || votedFor == candidateId)))
+    if (!isHealthy)
+      return false;
+    else if (candidateTerm > CurrentTerm || (candidateTerm == CurrentTerm && (votedFor == Guid.Empty || votedFor == candidateId)))
     {
       CurrentTerm = candidateTerm;
       votedFor = candidateId;
@@ -150,7 +165,7 @@ public class Node
 
   void ReceiveHeartBeat(int term)
   {
-    if (term >= CurrentTerm)
+    if ((term > CurrentTerm && State == NodeState.Leader) || (term >= CurrentTerm && State != NodeState.Leader))
     {
       CurrentTerm = term;
       State = NodeState.Follower;
@@ -170,7 +185,7 @@ public class Node
 
   private bool ElectionTimedOut()
   {
-    return DateTime.UtcNow - lastHeartbeatReceived > TimeSpan.FromMilliseconds(electionTimeout);
+    return timeProvider.UtcNow - lastHeartbeatReceived > TimeSpan.FromMilliseconds(electionTimeout);
   }
 
   bool NodeHasMajorityVote(int numberOfVotes)
@@ -184,5 +199,24 @@ public class Node
     {
       File.AppendAllText(LogFileName, $"{DateTime.Now.TimeOfDay}: {message}\n");
     }
+  }
+
+  public void Restart()
+  {
+    Stop();
+    Resume();
+  }
+
+  public void Stop()
+  {
+    isHealthy = false;
+  }
+
+  public void Resume()
+  {
+    State = NodeState.Follower;
+    isHealthy = true;
+
+    SetElectionTimeout();
   }
 }
