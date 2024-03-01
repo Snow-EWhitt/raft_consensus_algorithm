@@ -11,7 +11,7 @@ public class Node
 {
   public Guid Id { get; private set; }
   public NodeState State { get; set; }
-  public int CurrentTerm { get; set; }
+  int CurrentTerm { get; set; }
 
   private readonly object logLock = new();
   readonly Random rng = new();
@@ -20,8 +20,12 @@ public class Node
   readonly string LogFileName;
   DateTime lastHeartbeatReceived;
   Guid votedFor;
+  Guid recentLeader;
   int electionTimeout;
   bool isHealthy;
+
+  public List<LogEntry> LogEntries { get; private set; } = [];
+  public Dictionary<string, (int value, int logIndex)> LogData = [];
 
   public Node(List<Node> allNodes, ITimeProvider timeProvider, bool isHealthy)
   {
@@ -150,29 +154,46 @@ public class Node
     }
   }
 
-  void SendHeartbeat()
+  public void SendHeartbeat()
   {
     foreach (Node node in NodeList)
     {
       if (node.Id == Id)
         continue;
 
-      node.ReceiveHeartBeat(CurrentTerm);
+      List<LogEntry> entries = LogEntries.Where(e => !node.LogEntries.Select(le => le.LogIndex).Contains(e.LogIndex)).ToList();
+
+      node.ReceiveHeartBeat(CurrentTerm, Id, entries);
     }
 
     LogEntry("Hearbeat sent to all nodes.");
   }
 
-  void ReceiveHeartBeat(int term)
+  void ReceiveHeartBeat(
+    int term,
+    Guid leaderId,
+    List<LogEntry> entries)
   {
-    if ((term > CurrentTerm && State == NodeState.Leader) || (term >= CurrentTerm && State != NodeState.Leader))
+    if (term >= CurrentTerm)
     {
       CurrentTerm = term;
+      recentLeader = leaderId;
       State = NodeState.Follower;
+
+      foreach (LogEntry entry in entries)
+      {
+        AppendEntry(entry);
+      }
 
       SetElectionTimeout();
       LogEntry("Received heartbeat.");
     }
+  }
+
+  public void AppendEntry(LogEntry entry)
+  {
+    LogEntries.Add(entry);
+    LogData[entry.Key] = (entry.Value, entry.LogIndex);
   }
 
   void SetElectionTimeout()

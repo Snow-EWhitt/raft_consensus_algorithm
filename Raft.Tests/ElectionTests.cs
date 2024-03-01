@@ -131,7 +131,7 @@ public class Tests
     nodes.Add(new Node(nodes, testTimeProvider, true));
     nodes.Add(new Node(nodes, testTimeProvider, true));
 
-    testTimeProvider.UtcNow = testTimeProvider.UtcNow.AddMilliseconds(300);
+    testTimeProvider.UtcNow = testTimeProvider.UtcNow.AddMilliseconds(500);
 
     // Act
     foreach (Node node in nodes)
@@ -203,7 +203,6 @@ public class Tests
     nodes.Add(new Node(nodes, testTimeProvider, true));
     nodes.Add(new Node(nodes, testTimeProvider, true));
     nodes.Add(new Node(nodes, testTimeProvider, true));
-    nodes.Add(new Node(nodes, testTimeProvider, true));
 
     testTimeProvider.UtcNow = testTimeProvider.UtcNow.AddMilliseconds(300);
 
@@ -216,7 +215,7 @@ public class Tests
         node.Restart();
     }
 
-    nodes[4].CurrentTerm--;
+    nodes.Add(new Node(nodes, testTimeProvider, true));
     nodes[4].Act();
 
     // Assert
@@ -263,6 +262,123 @@ public class Tests
     {
       Assert.That(initialLeader.State, Is.EqualTo(NodeState.Follower));
       Assert.That(newLeader.State, Is.EqualTo(NodeState.Leader));
+    });
+  }
+
+  [Test]
+  public void EventualGetWritesAndReturnsCorrectly()
+  {
+    // Arrange
+    List<Node> nodes = [];
+    Gateway gateway = new(nodes);
+    var testTimeProvider = new TestTimeProvider(DateTime.UtcNow);
+
+    nodes.Add(new Node(nodes, testTimeProvider, true));
+    nodes.Add(new Node(nodes, testTimeProvider, true));
+    nodes.Add(new Node(nodes, testTimeProvider, true));
+    nodes.Add(new Node(nodes, testTimeProvider, true));
+    nodes.Add(new Node(nodes, testTimeProvider, true));
+
+    testTimeProvider.UtcNow = testTimeProvider.UtcNow.AddMilliseconds(500);
+
+    // Act
+    foreach (Node node in nodes)
+    {
+      node.Act();
+    }
+
+    Node leader = nodes.First(n => n.State == NodeState.Leader);
+    
+    gateway.Write("eventualGetKey", 2);
+    
+    foreach (Node node in nodes)
+    {
+      node.Act();
+    }
+
+    int? value = gateway.EventualGet("eventualGetKey");
+
+    // Assert
+    Assert.That(value, Is.EqualTo(2));
+  }
+
+  [Test]
+  public void StrongGetWritesAndReturnsCorrectly()
+  {
+    // Arrange
+    List<Node> nodes = [];
+    Gateway gateway = new(nodes);
+    var testTimeProvider = new TestTimeProvider(DateTime.UtcNow);
+
+    nodes.Add(new Node(nodes, testTimeProvider, true));
+    nodes.Add(new Node(nodes, testTimeProvider, true));
+    nodes.Add(new Node(nodes, testTimeProvider, true));
+    nodes.Add(new Node(nodes, testTimeProvider, true));
+    nodes.Add(new Node(nodes, testTimeProvider, true));
+
+    testTimeProvider.UtcNow = testTimeProvider.UtcNow.AddMilliseconds(500);
+
+    // Act
+    foreach (Node node in nodes)
+    {
+      node.Act();
+    }
+
+    Node leader = nodes.First(n => n.State == NodeState.Leader);
+    
+    gateway.Write("strongGetKey", 4);
+    
+    foreach (Node node in nodes)
+    {
+      node.Act();
+    }
+
+    int? value = gateway.StrongGet("strongGetKey");
+
+    // Assert
+    Assert.That(value, Is.EqualTo(4));
+  }
+
+  [Test]
+  public void CompareVersionAndSwapIsSuccessful()
+  {
+    // Arrange
+    List<Node> nodes = [];
+    Gateway gateway = new(nodes);
+    var testTimeProvider = new TestTimeProvider(DateTime.UtcNow);
+
+    nodes.Add(new Node(nodes, testTimeProvider, true));
+    nodes.Add(new Node(nodes, testTimeProvider, true));
+    nodes.Add(new Node(nodes, testTimeProvider, true));
+    nodes.Add(new Node(nodes, testTimeProvider, true));
+    nodes.Add(new Node(nodes, testTimeProvider, true));
+
+    testTimeProvider.UtcNow = testTimeProvider.UtcNow.AddMilliseconds(500);
+
+    // Act
+    foreach (Node node in nodes)
+    {
+      node.Act();
+    }
+
+    Node leader = nodes.First(n => n.State == NodeState.Leader);
+    
+    gateway.Write("CVASKey", 8);
+    
+    foreach (Node node in nodes)
+    {
+      node.Act();
+    }
+
+    bool result = gateway.CompareVersionAndSwap("CVASKey", 8, 16);
+
+    int? value = gateway.StrongGet("CVASKey");
+
+    // Assert
+    Assert.Multiple(() =>
+    {
+      Assert.That(result, Is.True);
+      Assert.That(value, Is.EqualTo(16));
     });
   }
 }
