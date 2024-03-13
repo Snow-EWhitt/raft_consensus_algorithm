@@ -51,11 +51,11 @@ services:
     volumes:
       - ./telemetry/otel-collector-config.yml:/etc/otelcol-contrib/config.yaml
     ports:
-      - 1888:1888
-      - 13133:13133
-      - 4317:4317
-      - 4318:4318
-      - 55679:55679
+      - 5008:1888
+      - 5009:13133
+      - 5010:4317
+      - 5011:4318
+      - 5012:55679
 
   ethan-raft-loki:
     container_name: ethan-raft-loki
