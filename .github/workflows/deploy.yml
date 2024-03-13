@@ -1,0 +1,41 @@
+name: Raft Consensus Algorithm
+run-name: Deploying ${{ github.actor }}
+on: [push]
+
+jobs:
+  Build:
+    runs-on: self-hosted
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Build Docker images
+        run: |
+          docker compose build
+  
+  Test:
+    runs-on: self-hosted
+    needs: Build
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+      
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v2
+        with:
+          dotnet-version: '8.0'
+
+      - name: Run tests
+        run: dotnet test Raft.Tests
+
+  Deploy:
+    runs-on: self-hosted
+    needs: Test
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Deploy on machine
+        run: |
+          docker compose down
+          docker compose up -d

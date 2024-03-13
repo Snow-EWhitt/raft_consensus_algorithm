@@ -7,6 +7,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Raft", "Raft\Raft.csproj", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Raft.Tests", "Raft.Tests\Raft.Tests.csproj", "{F98C313F-1EF3-4821-A110-279E079367F9}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node", "Node\Node.csproj", "{69117B8F-DF3E-4B9F-B707-79C523DF14B3}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Gateway", "Gateway\Gateway.csproj", "{A793D9EC-8567-426D-B0D4-B92FF1C86B3D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -24,5 +28,13 @@ Global
 		{F98C313F-1EF3-4821-A110-279E079367F9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F98C313F-1EF3-4821-A110-279E079367F9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F98C313F-1EF3-4821-A110-279E079367F9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{69117B8F-DF3E-4B9F-B707-79C523DF14B3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{69117B8F-DF3E-4B9F-B707-79C523DF14B3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{69117B8F-DF3E-4B9F-B707-79C523DF14B3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{69117B8F-DF3E-4B9F-B707-79C523DF14B3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A793D9EC-8567-426D-B0D4-B92FF1C86B3D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A793D9EC-8567-426D-B0D4-B92FF1C86B3D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A793D9EC-8567-426D-B0D4-B92FF1C86B3D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A793D9EC-8567-426D-B0D4-B92FF1C86B3D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

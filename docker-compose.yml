@@ -1,0 +1,80 @@
+version: "3"
+
+services:
+  ethan-raft-gateway:
+    container_name: ethan-raft-gateway
+    image: gateway
+    build:
+      context: .
+      dockerfile: Gateway/Dockerfile
+    ports:
+      - 5000:8080
+    environment:
+      - NODES="ethan-raft-node-1,ethan-raft-node-2,ethan-raft-node-3"
+
+  ethan-raft-node-1:
+    container_name: ethan-raft-node-1
+    image: node
+    build:
+      context: .
+      dockerfile: Node/Dockerfile
+    ports:
+      - 5005:8080
+    environment:
+      - NODES="ethan-raft-node-2,ethan-raft-node-3"
+
+  ethan-raft-ethan-raft-node-2:
+    container_name: ethan-raft-node-2
+    image: node
+    build:
+      context: .
+      dockerfile: Node/Dockerfile
+    ports:
+      - 5006:8080
+    environment:
+      - NODES="ethan-raft-node-1,ethan-raft-node-3"
+
+  ethan-raft-node-3:
+    container_name: ethan-raft-node-3
+    image: node
+    build:
+      context: .
+      dockerfile: Node/Dockerfile
+    ports:
+      - 5007:8080
+    environment:
+      - NODES="ethan-raft-node-1,ethan-raft-node-2"
+
+  ethan-raft-otel-collector:
+    container_name: ethan-raft-otel-collector
+    image: otel/opentelemetry-collector-contrib
+    volumes:
+      - ./telemetry/otel-collector-config.yml:/etc/otelcol-contrib/config.yaml
+    ports:
+      - 1888:1888
+      - 13133:13133
+      - 4317:4317
+      - 4318:4318
+      - 55679:55679
+
+  ethan-raft-loki:
+    container_name: ethan-raft-loki
+    image: grafana/loki:latest
+    ports:
+      - 5002:3100
+
+  ethan-raft-grafana:
+    container_name: ethan-raft-grafana
+    image: grafana/grafana:latest
+    user: 1000:1000
+    ports:
+      - 5001:3000
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: grafana
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./telemetry/grafana-datasource.yml:/etc/grafana/provisioning/datasources/grafana-datasource.yml
+
+volumes:
+  grafana_data:
