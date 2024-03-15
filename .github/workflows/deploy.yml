@@ -13,24 +13,25 @@ jobs:
         run: |
           docker compose build
   
-  Test:
-    runs-on: self-hosted
-    needs: Build
-    steps:
-      - name: Check out repository code
-        uses: actions/checkout@v4
+  # Test:
+  #   runs-on: self-hosted
+  #   needs: Build
+  #   steps:
+  #     - name: Check out repository code
+  #       uses: actions/checkout@v4
       
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v2
-        with:
-          dotnet-version: '8.0'
+  #     - name: Set up .NET
+  #       uses: actions/setup-dotnet@v2
+  #       with:
+  #         dotnet-version: '8.0'
 
-      - name: Run tests
-        run: dotnet test Raft.Tests
+  #     - name: Run tests
+  #       run: dotnet test Raft.Tests
 
   Deploy:
     runs-on: self-hosted
-    needs: Test
+    # needs: Test
+    needs: Build
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4

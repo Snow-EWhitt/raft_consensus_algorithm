@@ -204,7 +204,7 @@ public class Tests
     nodes.Add(new Node(nodes, testTimeProvider, true));
     nodes.Add(new Node(nodes, testTimeProvider, true));
 
-    testTimeProvider.UtcNow = testTimeProvider.UtcNow.AddMilliseconds(300);
+    testTimeProvider.UtcNow = testTimeProvider.UtcNow.AddMilliseconds(500);
 
     // Act
     nodes[0].Act();

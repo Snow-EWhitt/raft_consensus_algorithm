@@ -1,13 +1,30 @@
+using Raft;
+using Raft.Services;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddControllers();
+builder.Services.AddHttpClient();
+
+builder.Services.AddSingleton<INodeService, NodeService>();
+builder.Services.AddSingleton<ITimeProvider, RealTimeProvider>();
 
 var app = builder.Build();
 
-var nodes = Environment.GetEnvironmentVariable("NODES")?.Split(',') ?? [];
+var nodes = Environment.GetEnvironmentVariable("NODES")?.Split(',').ToList() ?? [];
+var nodeService = app.Services.GetRequiredService<INodeService>();
+var timeProvider = app.Services.GetRequiredService<ITimeProvider>();
+
+var node = new Raft.Node(nodeService, nodes, timeProvider, true);
+
+builder.Services.AddSingleton<Raft.Node>(s =>
+{
+  return node;
+});
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

@@ -1,0 +1,17 @@
+# Ignore Visual Studio files
+.vs/
+*.suo
+*.user
+*.userprefs
+*.sln.docstates
+*.pdb
+
+# Ignore build artifacts
+bin/
+obj/
+
+# Ignore Git files
+.git/
+.gitignore
+
+*.log

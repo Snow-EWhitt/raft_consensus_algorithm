@@ -1,76 +1,153 @@
+using System.Text;
+using System.Text.Json;
+
 namespace Raft;
 
 public class Gateway
 {
+  readonly HttpClient _httpClient;
   readonly Random rng = new();
-  readonly List<Node> nodeList;
+  readonly List<string> nodeList;
 
-  public Gateway(List<Node> nodes)
+  public Gateway(List<string> nodes)
   {
     nodeList = nodes;
+    _httpClient = new HttpClient();
   }
 
-  Node? GetLeaderNode()
+  async Task<string?> GetLeaderNode()
   {
-    return nodeList.First(n => n.State == NodeState.Leader);
-  }
-
-  public int? EventualGet(string key)
-  {
-    Node randomNode = nodeList[rng.Next(nodeList.Count)];
-
-    if (randomNode.LogData.TryGetValue(key, out var _))
-      return randomNode.LogData[key].value;
-
-    return null;
-  }
-
-  public int? StrongGet(string key)
-  {
-    Node? leader = GetLeaderNode();
-
-    if (leader is not null && leader.LogData.TryGetValue(key, out var _))
-      return leader.LogData[key].value;
-
-    return null;
-  }
-
-  public bool CompareVersionAndSwap(string key, int expectedValue, int newValue)
-  {
-    Node? leader = GetLeaderNode();
-
-    if (leader != null &&
-        leader.LogData.TryGetValue(key, out var value) &&
-        value.value == expectedValue)
+    foreach (var nodeURL in nodeList)
     {
-      int newLogIndex = leader.LogEntries.Max(e => e.LogIndex) + 1;
+      try
+      {
+        var response = await _httpClient.GetAsync($"{nodeURL}/Node/getLeader");
 
-      leader.AppendEntry(new LogEntry { Key = key, Value = newValue, LogIndex = newLogIndex });
+        if (response.IsSuccessStatusCode)
+        {
+          var content = await response.Content.ReadAsStringAsync();
+          var isLeader = bool.Parse(content);
 
-      return true;
+          if (isLeader)
+          {
+            return nodeURL;
+          }
+        }
+      }
+      catch
+      {
+
+      }
+    }
+
+    return null;
+  }
+
+  public async Task<(int? value, int logIndex)?> EventualGet(string key)
+  {
+    var nodeURL = nodeList[rng.Next(nodeList.Count)];
+    try
+    {
+      var response = await _httpClient.GetAsync($"{nodeURL}/Node/eventualGet?key={key}");
+
+      if (response.IsSuccessStatusCode)
+      {
+        var content = await response.Content.ReadAsStringAsync();
+        var options = new JsonSerializerOptions
+        {
+          PropertyNameCaseInsensitive = true
+        };
+        var getResult = JsonSerializer.Deserialize<(int Value, int LogIndex)>(content, options);
+
+        return (getResult.Value, getResult.LogIndex);
+      }
+    }
+    catch
+    {
+
+    }
+    return null;
+  }
+
+  public async Task<(int? value, int logIndex)?> StrongGet(string key)
+  {
+    var leaderURL = await GetLeaderNode();
+
+    if (leaderURL != null)
+    {
+      try
+      {
+        var response = await _httpClient.GetAsync($"{leaderURL}/Node/strongGet?key={key}");
+
+        if (response.IsSuccessStatusCode)
+        {
+          var content = await response.Content.ReadAsStringAsync();
+          var options = new JsonSerializerOptions
+          {
+            PropertyNameCaseInsensitive = true
+          };
+          var getResult = JsonSerializer.Deserialize<(int Value, int LogIndex)>(content, options);
+
+          return (getResult.Value, getResult.LogIndex);
+        }
+      }
+      catch
+      {
+
+      }
+    }
+
+    return null;
+  }
+
+  public async Task<bool> CompareVersionAndSwap(string key, int expectedValue, int newValue)
+  {
+    var leaderURL = await GetLeaderNode();
+
+    if (leaderURL != null)
+    {
+      try
+      {
+        var content = new FormUrlEncodedContent(
+        [
+          new KeyValuePair<string, string>("key", key),
+          new KeyValuePair<string, string>("expectedValue", expectedValue.ToString()),
+          new KeyValuePair<string, string>("newValue", newValue.ToString())
+        ]);
+
+        var response = await _httpClient.PostAsync($"{leaderURL}/Node/compareVersionAndSwap", content);
+
+        return response.IsSuccessStatusCode;
+      }
+      catch
+      {
+
+      }
     }
 
     return false;
   }
 
-  public bool Write(string key, int value)
+  public async Task<bool> Write(string key, int value)
   {
-    Node? leader = GetLeaderNode();
+    var leaderURL = await GetLeaderNode();
 
-    if (leader is not null)
+    if (leaderURL != null)
     {
-      int newLogIndex = leader.LogEntries.Count != 0 ?
-        leader.LogEntries.Max(e => e.LogIndex) + 1 : 0;
-      LogEntry newLog = new()
+      try
       {
-        Key = key,
-        Value = value,
-        LogIndex = newLogIndex
-      };
+        var payload = new { Key = key, Value = value };
+        var json = JsonSerializer.Serialize(payload);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-      leader.AppendEntry(newLog);
+        var response = await _httpClient.PostAsync($"{leaderURL}/Node/write", content);
 
-      return true;
+        return response.IsSuccessStatusCode;
+      }
+      catch
+      {
+
+      }
     }
 
     return false;

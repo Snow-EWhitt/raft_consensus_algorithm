@@ -1,3 +1,5 @@
+using Raft.Services;
+
 namespace Raft;
 
 public enum NodeState
@@ -13,29 +15,33 @@ public class Node
   public NodeState State { get; set; }
   int CurrentTerm { get; set; }
 
-  private readonly object logLock = new();
-  readonly Random rng = new();
-  readonly List<Node> NodeList = [];
-  ITimeProvider timeProvider;
-  readonly string LogFileName;
-  DateTime lastHeartbeatReceived;
-  Guid votedFor;
-  Guid recentLeader;
-  int electionTimeout;
-  bool isHealthy;
+  readonly object _logLock = new();
+  readonly Random _rng = new();
+  INodeService _service;
+  readonly ITimeProvider _timeProvider;
+  readonly string _logFileName;
+  DateTime _lastHeartbeatReceived;
+  Guid _votedFor;
+  Guid _recentLeader;
+  int _lastLogIndex;
+  int _electionTimeout;
+  bool _isHealthy;
 
+  readonly List<string> _nodeList = [];
   public List<LogEntry> LogEntries { get; private set; } = [];
   public Dictionary<string, (int value, int logIndex)> LogData = [];
 
-  public Node(List<Node> allNodes, ITimeProvider timeProvider, bool isHealthy)
+  public Node(INodeService service, List<string> nodeUrls, ITimeProvider timeProvider, bool isHealthy)
   {
     Id = Guid.NewGuid();
     State = NodeState.Follower;
     CurrentTerm = 0;
-    NodeList = allNodes;
-    LogFileName = $"{Id}.log";
-    this.isHealthy = isHealthy;
-    this.timeProvider = timeProvider;
+    _nodeList = nodeUrls;
+    _lastLogIndex = 0;
+    _logFileName = $"{Id}.log";
+    _isHealthy = isHealthy;
+    _service = service;
+    _timeProvider = timeProvider;
 
     LogEntry($"Node {Id} created");
     LogEntry($"Node {Id} is {(isHealthy ? "healthy" : "not healthy")}.");
@@ -44,7 +50,7 @@ public class Node
 
   public void Initialize()
   {
-    while (isHealthy)
+    while (_isHealthy)
     {
       Act();
     }
@@ -52,7 +58,7 @@ public class Node
 
   public void Act()
   {
-    if (isHealthy)
+    if (_isHealthy)
     {
       if (State == NodeState.Leader)
       {
@@ -80,19 +86,28 @@ public class Node
     }
   }
 
-  void StartElection()
+  public bool IsLeader()
+  {
+    return State == NodeState.Leader;
+  }
+
+  async void StartElection()
   {
     LogEntry("Starting election.");
 
-    votedFor = Id;
+    List<bool> votes = [];
+    _votedFor = Id;
     int numberOfVotes = 1; // Node votes for itself
 
-    foreach (Node node in NodeList)
+    foreach (string nodeURL in _nodeList)
     {
-      if (node.Id == Id)
-        continue;
+      votes.Add(await _service.RequestVoteAsync(nodeURL, Id, CurrentTerm));
+    }
 
-      numberOfVotes += RequestVote(node);
+    foreach (bool isVotedFor in votes)
+    {
+      if (isVotedFor)
+        numberOfVotes++;
     }
 
     CalculateElectionResults(numberOfVotes);
@@ -115,30 +130,14 @@ public class Node
     }
   }
 
-  int RequestVote(Node node)
+  public bool Vote(Guid candidateId, int candidateTerm)
   {
-    if (node.Vote(Id, CurrentTerm))
-    {
-      LogEntry($"Received vote from Node {node.Id}.");
-
-      return 1;
-    }
-    else
-    {
-      LogEntry($"Did not receive vote from Node {node.Id}.");
-
-      return 0;
-    }
-  }
-
-  bool Vote(Guid candidateId, int candidateTerm)
-  {
-    if (!isHealthy)
+    if (!_isHealthy)
       return false;
-    else if (candidateTerm > CurrentTerm || (candidateTerm == CurrentTerm && (votedFor == Guid.Empty || votedFor == candidateId)))
+    else if (candidateTerm > CurrentTerm || (candidateTerm == CurrentTerm && (_votedFor == Guid.Empty || _votedFor == candidateId)))
     {
       CurrentTerm = candidateTerm;
-      votedFor = candidateId;
+      _votedFor = candidateId;
       State = NodeState.Follower;
 
       SetElectionTimeout();
@@ -146,30 +145,25 @@ public class Node
 
       return true;
     }
-    else
-    {
-      LogEntry($"Denied vote for Node {candidateId} on term {candidateTerm}.");
 
-      return false;
-    }
+    LogEntry($"Denied vote for Node {candidateId} on term {candidateTerm}.");
+
+    return false;
   }
 
-  public void SendHeartbeat()
+  async void SendHeartbeat()
   {
-    foreach (Node node in NodeList)
+    foreach (string nodeURL in _nodeList)
     {
-      if (node.Id == Id)
-        continue;
-
-      List<LogEntry> entries = LogEntries.Where(e => !node.LogEntries.Select(le => le.LogIndex).Contains(e.LogIndex)).ToList();
-
-      node.ReceiveHeartBeat(CurrentTerm, Id, entries);
+      int lastLogIndex = await _service.GetLastLogIndexAsync(nodeURL);
+      List<LogEntry> entries = LogEntries.Where(e => e.LogIndex > lastLogIndex).ToList();
+      await _service.SendHeartbeatAsync(nodeURL, CurrentTerm, Id, entries);
     }
 
     LogEntry("Hearbeat sent to all nodes.");
   }
 
-  void ReceiveHeartBeat(
+  public void ReceiveHeartBeat(
     int term,
     Guid leaderId,
     List<LogEntry> entries)
@@ -177,7 +171,7 @@ public class Node
     if (term >= CurrentTerm)
     {
       CurrentTerm = term;
-      recentLeader = leaderId;
+      _recentLeader = leaderId;
       State = NodeState.Follower;
 
       foreach (LogEntry entry in entries)
@@ -192,34 +186,104 @@ public class Node
 
   public void AppendEntry(LogEntry entry)
   {
+    _lastLogIndex = Math.Max(_lastLogIndex + 1, entry.LogIndex);
     LogEntries.Add(entry);
     LogData[entry.Key] = (entry.Value, entry.LogIndex);
   }
 
   void SetElectionTimeout()
   {
-    electionTimeout = rng.Next(150, 300);
-    lastHeartbeatReceived = DateTime.UtcNow;
+    _electionTimeout = _rng.Next(150, 300);
+    _lastHeartbeatReceived = DateTime.UtcNow;
 
-    LogEntry($"Timer set for {electionTimeout}ms.");
+    LogEntry($"Timer set for {_electionTimeout}ms.");
   }
 
-  private bool ElectionTimedOut()
+  bool ElectionTimedOut()
   {
-    return timeProvider.UtcNow - lastHeartbeatReceived > TimeSpan.FromMilliseconds(electionTimeout);
+    return _timeProvider.UtcNow - _lastHeartbeatReceived > TimeSpan.FromMilliseconds(_electionTimeout);
   }
 
   bool NodeHasMajorityVote(int numberOfVotes)
   {
-    return numberOfVotes > NodeList.Count / 2;
+    return numberOfVotes > _nodeList.Count / 2;
   }
 
   void LogEntry(string message)
   {
-    lock (logLock)
+    lock (_logLock)
     {
-      File.AppendAllText(LogFileName, $"{DateTime.Now.TimeOfDay}: {message}\n");
+      File.AppendAllText(_logFileName, $"{DateTime.Now.TimeOfDay}: {message}\n");
     }
+  }
+
+  public (int? value, int logIndex) EventualGet(string key)
+  {
+    if (LogData.TryGetValue(key, out var data))
+    {
+      return (data.value, data.logIndex);
+    }
+    return (null, 0);
+  }
+
+  public (int? value, int logIndex) StrongGet(string key)
+  {
+    if (!IsLeader()) return (null, 0);
+
+    if (LogData.TryGetValue(key, out var data))
+    {
+      return (data.value, data.logIndex);
+    }
+    return (null, 0);
+  }
+
+  public bool CompareVersionAndSwap(string key, int expectedValue, int newValue, int expectedLogIndex)
+  {
+    if (!IsLeader())
+      return false;
+
+    if (LogData.TryGetValue(key, out var data) && data.value == expectedValue && data.logIndex == expectedLogIndex)
+    {
+      _lastLogIndex++;
+
+      var newEntry = new LogEntry
+      {
+        Key = key,
+        Value = newValue,
+        LogIndex = _lastLogIndex
+      };
+
+      LogEntries.Add(newEntry);
+      LogData[key] = (newValue, ++_lastLogIndex);
+      return true;
+    }
+    return false;
+  }
+
+  public bool Write(string key, int value)
+  {
+    if (!IsLeader()) return false;
+
+    _lastLogIndex++;
+
+    var newEntry = new LogEntry
+    {
+      Key = key,
+      Value = value,
+      LogIndex = _lastLogIndex
+    };
+
+    LogEntries.Add(newEntry);
+
+    if (LogData.ContainsKey(key))
+    {
+      LogData[key] = (value, LogData[key].logIndex + 1);
+    }
+    else
+    {
+      LogData.Add(key, (value, ++_lastLogIndex));
+    }
+    return true;
   }
 
   public void Restart()
@@ -230,13 +294,13 @@ public class Node
 
   public void Stop()
   {
-    isHealthy = false;
+    _isHealthy = false;
   }
 
   public void Resume()
   {
     State = NodeState.Follower;
-    isHealthy = true;
+    _isHealthy = true;
 
     SetElectionTimeout();
   }
