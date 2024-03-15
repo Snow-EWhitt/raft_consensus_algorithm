@@ -13,18 +13,19 @@ builder.Services.AddHttpClient();
 builder.Services.AddSingleton<INodeService, NodeService>();
 builder.Services.AddSingleton<ITimeProvider, RealTimeProvider>();
 
-var app = builder.Build();
-
 var nodes = Environment.GetEnvironmentVariable("NODES")?.Split(',').ToList() ?? [];
-var nodeService = app.Services.GetRequiredService<INodeService>();
-var timeProvider = app.Services.GetRequiredService<ITimeProvider>();
+// var nodeService = app.Services.GetRequiredService<INodeService>();
+// var timeProvider = app.Services.GetRequiredService<ITimeProvider>();
 
-var node = new Raft.Node(nodeService, nodes, timeProvider, true);
+// var node = new Raft.Node(nodeService, nodes, timeProvider, true);
 
-builder.Services.AddSingleton<Raft.Node>(s =>
-{
-  return node;
-});
+// builder.Services.AddSingleton<Raft.Node>(s =>
+// {
+//   return node;
+// });
+builder.Services.AddSingleton<Raft.Node>();
+
+var app = builder.Build();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

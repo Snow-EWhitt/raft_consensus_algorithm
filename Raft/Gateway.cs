@@ -5,9 +5,9 @@ namespace Raft;
 
 public class Gateway
 {
-  readonly HttpClient _httpClient;
-  readonly Random rng = new();
-  readonly List<string> nodeList;
+  HttpClient _httpClient;
+  Random rng = new();
+  List<string> nodeList;
 
   public Gateway(List<string> nodes)
   {

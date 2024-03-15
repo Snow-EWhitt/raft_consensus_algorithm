@@ -6,7 +6,7 @@ namespace Gateway.GatewayController;
 [Route("[controller]")]
 public class GatewayController : ControllerBase
 {
-  private readonly Raft.Gateway _gateway;
+  private Raft.Gateway _gateway;
 
   public GatewayController(Raft.Gateway gateway)
   {

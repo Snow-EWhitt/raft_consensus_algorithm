@@ -7,7 +7,7 @@ namespace Node.NodeController;
 [Route("[controller]")]
 public class NodeController : ControllerBase
 {
-  private readonly Raft.Node _node;
+  private Raft.Node _node;
 
   public NodeController(Raft.Node node)
   {

@@ -15,11 +15,11 @@ public class Node
   public NodeState State { get; set; }
   int CurrentTerm { get; set; }
 
-  readonly object _logLock = new();
-  readonly Random _rng = new();
+  object _logLock = new();
+  Random _rng = new();
   INodeService _service;
-  readonly ITimeProvider _timeProvider;
-  readonly string _logFileName;
+  ITimeProvider _timeProvider;
+  string _logFileName;
   DateTime _lastHeartbeatReceived;
   Guid _votedFor;
   Guid _recentLeader;
@@ -27,7 +27,7 @@ public class Node
   int _electionTimeout;
   bool _isHealthy;
 
-  readonly List<string> _nodeList = [];
+  List<string> _nodeList = [];
   public List<LogEntry> LogEntries { get; private set; } = [];
   public Dictionary<string, (int value, int logIndex)> LogData = [];
 
@@ -46,6 +46,7 @@ public class Node
     LogEntry($"Node {Id} created");
     LogEntry($"Node {Id} is {(isHealthy ? "healthy" : "not healthy")}.");
     SetElectionTimeout();
+    Initialize();
   }
 
   public void Initialize()
