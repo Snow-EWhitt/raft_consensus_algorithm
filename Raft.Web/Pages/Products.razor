@@ -1,0 +1,35 @@
+@using Raft.Web.Models;
+@using Raft.Web.Components;
+
+@page "/products"
+
+<PageTitle>Products</PageTitle>
+
+<h1>Products</h1>
+
+@if (_products != null)
+{
+  @foreach (var product in _products)
+  {
+    <Item Product="product" />
+  }
+}
+
+@code
+{
+  private List<Product> _products { get; set; }
+
+  protected override async Task OnInitializedAsync()
+  {
+    List<Product> itemList = new()
+    {
+      new Product("Item 1", 1.00m),
+      new Product("Item 2", 1.00m),
+      new Product("Item 3", 1.00m),
+      new Product("Item 4", 1.00m),
+      new Product("Item 5", 1.00m)
+    };
+
+    _products = itemList;
+  }
+}

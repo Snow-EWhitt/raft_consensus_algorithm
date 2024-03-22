@@ -1,0 +1,71 @@
+@using System.Text.Json;
+@using Raft.Web.Models;
+@using Raft.Web.Services;
+@using Raft.Shared;
+
+@inject GatewayService _service;
+
+@namespace Raft.Web.Components
+
+<div class="card mb-3" style="width: 18rem">
+  <div class="card-body">
+    <h5 class="card-title">@Product.Name</h5>
+    <p class="card-text">Cost: $@Product.Cost</p>
+    <div class="row justify-content-between">
+      <p class="col-auto card-text">Quantity: @(Product.Quantity)</p>
+      <div class="col-auto">
+        <button class="btn btn-primary" style="width: 40px; height: 40px" @onclick="IncreaseQuantity"><strong>+</strong></button>
+        <button class="btn btn-secondary" style="width: 40px; height: 40px" @onclick="DecreaseQuantity"><strong>-</strong></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+@code {
+  [Parameter]
+  public Product Product { get; set; }
+  private Data lastData;
+
+  protected override async Task OnInitializedAsync()
+  {
+    await LoadQuantity();
+  }
+
+  private async Task LoadQuantity()
+  {
+    var result = await _service.StrongGet(Product.Name);
+    lastData = result;
+    
+    if (result.LogIndex != -1)
+    {
+      Product.Quantity = int.Parse(result.Value);
+    }
+
+    StateHasChanged();
+  }
+
+  private async Task IncreaseQuantity()
+  {
+    int newQuantity = Product.Quantity + 1;
+
+    if (newQuantity >= 0)
+    {
+      await _service.UpdateData(Product.Name, lastData.Value, JsonSerializer.Serialize(newQuantity));
+
+      await LoadQuantity();
+    }
+  }
+
+  private async Task DecreaseQuantity()
+  {
+    int newQuantity = Product.Quantity - 1;
+
+    if (newQuantity >= 0)
+    {
+      await _service.UpdateData(Product.Name, lastData.Value, JsonSerializer.Serialize(newQuantity));
+
+      await LoadQuantity();
+    }
+  }
+
+}

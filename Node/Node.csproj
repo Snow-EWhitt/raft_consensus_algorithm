@@ -14,6 +14,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Raft\Raft.csproj" />
+    <ProjectReference Include="..\Raft.Shared\Raft.Shared.csproj" />
   </ItemGroup>
 
 </Project>

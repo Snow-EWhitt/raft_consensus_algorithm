@@ -1,11 +1,14 @@
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using Raft.Shared;
 
 namespace Raft;
 
 public class Gateway
 {
   HttpClient _httpClient;
+  // private readonly ILogger _logger;
   Random rng = new();
   List<string> nodeList;
 
@@ -13,15 +16,17 @@ public class Gateway
   {
     nodeList = nodes;
     _httpClient = new HttpClient();
+    // _logger = logger;
   }
 
   async Task<string?> GetLeaderNode()
   {
     foreach (var nodeURL in nodeList)
     {
+      Console.WriteLine("Calling " + nodeURL + "/Node/getLeader");
       try
       {
-        var response = await _httpClient.GetAsync($"{nodeURL}/Node/getLeader");
+        var response = await _httpClient.GetAsync($"http://{nodeURL}/Node/getLeader");
 
         if (response.IsSuccessStatusCode)
         {
@@ -48,7 +53,7 @@ public class Gateway
     var nodeURL = nodeList[rng.Next(nodeList.Count)];
     try
     {
-      var response = await _httpClient.GetAsync($"{nodeURL}/Node/eventualGet?key={key}");
+      var response = await _httpClient.GetAsync($"http://{nodeURL}/Node/eventualGet?key={key}");
 
       if (response.IsSuccessStatusCode)
       {
@@ -69,15 +74,23 @@ public class Gateway
     return null;
   }
 
-  public async Task<(int? value, int logIndex)?> StrongGet(string key)
+  public async Task<Data?> StrongGet(string key)
   {
+    // Console.WriteLine("Gateway function called");
+
     var leaderURL = await GetLeaderNode();
+
+    Console.WriteLine(leaderURL);
 
     if (leaderURL != null)
     {
       try
       {
-        var response = await _httpClient.GetAsync($"{leaderURL}/Node/strongGet?key={key}");
+        // Console.WriteLine("Calling leader node");
+
+        var response = await _httpClient.GetAsync($"http://{leaderURL}/Node/strongGet?key={key}");
+
+        // Console.WriteLine($"Leader node response: {response}");
 
         if (response.IsSuccessStatusCode)
         {
@@ -86,21 +99,24 @@ public class Gateway
           {
             PropertyNameCaseInsensitive = true
           };
-          var getResult = JsonSerializer.Deserialize<(int Value, int LogIndex)>(content, options);
+          var getResult = JsonSerializer.Deserialize<Data>(content, options);
 
-          return (getResult.Value, getResult.LogIndex);
+          Console.WriteLine(getResult?.Value);
+
+          if (getResult != null)
+            return getResult;
         }
       }
       catch
       {
-
+        Console.WriteLine("A problem occurred in the gateway function.");
       }
     }
 
     return null;
   }
 
-  public async Task<bool> CompareVersionAndSwap(string key, int expectedValue, int newValue)
+  public async Task<bool> CompareVersionAndSwap(string key, string expectedValue, string newValue)
   {
     var leaderURL = await GetLeaderNode();
 
@@ -115,13 +131,17 @@ public class Gateway
           new KeyValuePair<string, string>("newValue", newValue.ToString())
         ]);
 
-        var response = await _httpClient.PostAsync($"{leaderURL}/Node/compareVersionAndSwap", content);
+        Console.WriteLine($"Content: {content}");
+
+        var response = await _httpClient.PostAsync($"http://{leaderURL}/Node/compareVersionAndSwap", content);
+
+        Console.WriteLine($"Reponse: {response}");
 
         return response.IsSuccessStatusCode;
       }
       catch
       {
-
+        Console.WriteLine("An error has occurred while doing a compare version and swap operation");
       }
     }
 
@@ -140,7 +160,7 @@ public class Gateway
         var json = JsonSerializer.Serialize(payload);
         var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-        var response = await _httpClient.PostAsync($"{leaderURL}/Node/write", content);
+        var response = await _httpClient.PostAsync($"http://{leaderURL}/Node/write", content);
 
         return response.IsSuccessStatusCode;
       }

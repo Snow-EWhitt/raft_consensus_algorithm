@@ -1,0 +1,90 @@
+﻿@using System.Text.Json;
+@using Raft.Web.Services;
+@using Raft.Shared;
+
+@inject GatewayService _service;
+
+@page "/"
+
+<PageTitle>Account</PageTitle>
+
+<form @onsubmit="GetBalance">
+  <div class="mb-3">
+    <label for="username" class="form-label">Username:</label>
+    <InputText id="username" class="form-control" @bind-Value="_username" />
+  </div>
+  <button type="submit" class="btn btn-primary">Submit</button>
+</form>
+
+@if (_username != null)
+{
+  <p class="mt-4">Your balance is: @($"${_balance:0.00}")</p>
+
+  <div class="row mx-2 justify-content-between">
+    <div class="col col-5">
+      <form @onsubmit="SubmitDeposit">
+        <label for="deposit" class="form-label">Deposit</label>
+        <InputNumber class="form-control" id="deposit" @bind-Value="_depositAmount" step="0.01" />
+        <button type="submit" class="btn btn-primary mt-3">Deposit</button>
+      </form>
+    </div>
+    <div class="col col-5">
+      <form @onsubmit="SubmitWithdrawal">
+        <label for="withdrawal" class="form-label">Withdrawal</label>
+        <InputNumber class="form-control" id="withdrawal" @bind-Value="_withdrawalAmount" step="0.01" />
+        <button type="submit" class="btn btn-primary mt-3">Withdrawal</button>
+      </form>
+    </div>
+  </div>
+
+}
+
+@code
+{
+  private Data lastBalanceInfo;
+
+  private string? _username;
+  private decimal? _balance { get; set; }
+  private decimal _depositAmount;
+  private decimal _withdrawalAmount;
+
+  private async Task GetBalance()
+  {
+    lastBalanceInfo = await _service.StrongGet(_username);
+
+    if (lastBalanceInfo.LogIndex != -1)
+    {
+      _balance = decimal.Parse(lastBalanceInfo.Value);
+    }
+    else
+    {
+      _balance = null;
+    }
+  }
+
+  private async Task SubmitDeposit()
+  {
+    decimal newBalance = (_balance ?? 0) + _depositAmount;
+
+    if (_depositAmount > 0 && newBalance >= 0)
+    {
+      await _service.UpdateData(_username, lastBalanceInfo.Value, JsonSerializer.Serialize(newBalance));
+    }
+  
+    _depositAmount = 0;
+    await GetBalance();
+  }
+
+  private async Task SubmitWithdrawal()
+  {
+    decimal newBalance = (_balance ?? 0) - _withdrawalAmount;
+
+    if (_withdrawalAmount > 0 && newBalance >= 0)
+    {
+      await _service.UpdateData(_username, lastBalanceInfo.Value, JsonSerializer.Serialize(newBalance));
+    }
+  
+    _withdrawalAmount = 0;
+    await GetBalance();
+  }
+}

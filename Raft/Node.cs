@@ -1,4 +1,6 @@
+using Microsoft.Extensions.Hosting;
 using Raft.Services;
+using Raft.Shared;
 
 namespace Raft;
 
@@ -9,7 +11,7 @@ public enum NodeState
   Leader
 }
 
-public class Node
+public class Node : BackgroundService
 {
   public Guid Id { get; private set; }
   public NodeState State { get; set; }
@@ -29,7 +31,7 @@ public class Node
 
   List<string> _nodeList = [];
   public List<LogEntry> LogEntries { get; private set; } = [];
-  public Dictionary<string, (int value, int logIndex)> LogData = [];
+  public Dictionary<string, Data> LogData = [];
 
   public Node(INodeService service, List<string> nodeUrls, ITimeProvider timeProvider, bool isHealthy)
   {
@@ -46,24 +48,23 @@ public class Node
     LogEntry($"Node {Id} created");
     LogEntry($"Node {Id} is {(isHealthy ? "healthy" : "not healthy")}.");
     SetElectionTimeout();
-    Initialize();
   }
 
-  public void Initialize()
+  public async Task Initialize()
   {
     while (_isHealthy)
     {
-      Act();
+      await Act();
     }
   }
 
-  public void Act()
+  public async Task Act()
   {
     if (_isHealthy)
     {
       if (State == NodeState.Leader)
       {
-        SendHeartbeat();
+        await SendHeartbeat();
       }
       else if (ElectionTimedOut())
       {
@@ -75,13 +76,13 @@ public class Node
           CurrentTerm++;
 
           SetElectionTimeout();
-          StartElection();
+          await StartElection();
         }
         else if (State == NodeState.Candidate)
         {
           CurrentTerm++;
 
-          StartElection();
+          await StartElection();
         }
       }
     }
@@ -92,7 +93,7 @@ public class Node
     return State == NodeState.Leader;
   }
 
-  async void StartElection()
+  async Task StartElection()
   {
     LogEntry("Starting election.");
 
@@ -100,9 +101,15 @@ public class Node
     _votedFor = Id;
     int numberOfVotes = 1; // Node votes for itself
 
+    VoteRequest payload = new()
+    {
+      Id = Id,
+      Term = CurrentTerm
+    };
+
     foreach (string nodeURL in _nodeList)
     {
-      votes.Add(await _service.RequestVoteAsync(nodeURL, Id, CurrentTerm));
+      votes.Add(await _service.RequestVoteAsync(nodeURL, payload));
     }
 
     foreach (bool isVotedFor in votes)
@@ -114,14 +121,14 @@ public class Node
     CalculateElectionResults(numberOfVotes);
   }
 
-  private void CalculateElectionResults(int numberOfVotes)
+  private async void CalculateElectionResults(int numberOfVotes)
   {
     if (NodeHasMajorityVote(numberOfVotes))
     {
       State = NodeState.Leader;
 
       LogEntry($"Node {Id} won the election.");
-      SendHeartbeat();
+      await SendHeartbeat();
     }
     else
     {
@@ -152,30 +159,35 @@ public class Node
     return false;
   }
 
-  async void SendHeartbeat()
+  async Task SendHeartbeat()
   {
     foreach (string nodeURL in _nodeList)
     {
       int lastLogIndex = await _service.GetLastLogIndexAsync(nodeURL);
       List<LogEntry> entries = LogEntries.Where(e => e.LogIndex > lastLogIndex).ToList();
-      await _service.SendHeartbeatAsync(nodeURL, CurrentTerm, Id, entries);
+
+      HearbeatRequest payload = new()
+      {
+        LeaderId = Id,
+        Term = CurrentTerm,
+        Entries = entries
+      };
+
+      await _service.SendHeartbeatAsync(nodeURL, payload);
     }
 
     LogEntry("Hearbeat sent to all nodes.");
   }
 
-  public void ReceiveHeartBeat(
-    int term,
-    Guid leaderId,
-    List<LogEntry> entries)
+  public void ReceiveHeartBeat(HearbeatRequest heartbeat)
   {
-    if (term >= CurrentTerm)
+    if (heartbeat.Term >= CurrentTerm)
     {
-      CurrentTerm = term;
-      _recentLeader = leaderId;
+      CurrentTerm = heartbeat.Term;
+      _recentLeader = heartbeat.LeaderId;
       State = NodeState.Follower;
 
-      foreach (LogEntry entry in entries)
+      foreach (LogEntry entry in heartbeat.Entries)
       {
         AppendEntry(entry);
       }
@@ -189,7 +201,7 @@ public class Node
   {
     _lastLogIndex = Math.Max(_lastLogIndex + 1, entry.LogIndex);
     LogEntries.Add(entry);
-    LogData[entry.Key] = (entry.Value, entry.LogIndex);
+    LogData[entry.Key] = new Data { Value = entry.Value, LogIndex = entry.LogIndex };
   }
 
   void SetElectionTimeout()
@@ -216,58 +228,55 @@ public class Node
     {
       File.AppendAllText(_logFileName, $"{DateTime.Now.TimeOfDay}: {message}\n");
     }
+
+    // Console.WriteLine($"{DateTime.Now.TimeOfDay}: {message}");
   }
 
-  public (int? value, int logIndex) EventualGet(string key)
+  public Data EventualGet(string key)
   {
     if (LogData.TryGetValue(key, out var data))
     {
-      return (data.value, data.logIndex);
+      return new Data { Value = data.Value, LogIndex = data.LogIndex };
     }
-    return (null, 0);
+
+    return new Data { Value = "None", LogIndex = -1 };
   }
 
-  public (int? value, int logIndex) StrongGet(string key)
+  public Data StrongGet(string key)
   {
-    if (!IsLeader()) return (null, 0);
+    if (!IsLeader()) return new Data { Value = "None", LogIndex = -1 };
 
     if (LogData.TryGetValue(key, out var data))
-    {
-      return (data.value, data.logIndex);
-    }
-    return (null, 0);
+      return new Data { Value = data.Value, LogIndex = data.LogIndex };
+
+    return new Data { Value = "None", LogIndex = -1 };
   }
 
-  public bool CompareVersionAndSwap(string key, int expectedValue, int newValue, int expectedLogIndex)
+  public bool CompareVersionAndSwap(string key, string expectedValue, string newValue)
   {
     if (!IsLeader())
       return false;
 
-    if (LogData.TryGetValue(key, out var data) && data.value == expectedValue && data.logIndex == expectedLogIndex)
+    if (LogData.TryGetValue(key, out var data))
     {
-      _lastLogIndex++;
+      if (data.Value == expectedValue)
+        return Write(key, newValue);
 
-      var newEntry = new LogEntry
-      {
-        Key = key,
-        Value = newValue,
-        LogIndex = _lastLogIndex
-      };
-
-      LogEntries.Add(newEntry);
-      LogData[key] = (newValue, ++_lastLogIndex);
-      return true;
+      return false;
     }
-    return false;
+    else
+    {
+      return Write(key, newValue);
+    }
   }
 
-  public bool Write(string key, int value)
+  public bool Write(string key, string value)
   {
     if (!IsLeader()) return false;
 
     _lastLogIndex++;
 
-    var newEntry = new LogEntry
+    LogEntry newEntry = new()
     {
       Key = key,
       Value = value,
@@ -278,12 +287,13 @@ public class Node
 
     if (LogData.ContainsKey(key))
     {
-      LogData[key] = (value, LogData[key].logIndex + 1);
+      LogData[key] = new Data { Value = value, LogIndex = LogData[key].LogIndex + 1 };
     }
     else
     {
-      LogData.Add(key, (value, ++_lastLogIndex));
+      LogData.Add(key, new Data { Value = value, LogIndex = _lastLogIndex });
     }
+    
     return true;
   }
 
@@ -304,5 +314,10 @@ public class Node
     _isHealthy = true;
 
     SetElectionTimeout();
+  }
+
+  protected override async Task ExecuteAsync(CancellationToken token)
+  {
+    await Initialize();
   }
 }

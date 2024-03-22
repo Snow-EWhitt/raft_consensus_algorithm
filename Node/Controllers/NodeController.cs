@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
-using Raft;
+using Raft.Shared;
 
 namespace Node.NodeController;
 
@@ -8,10 +8,12 @@ namespace Node.NodeController;
 public class NodeController : ControllerBase
 {
   private Raft.Node _node;
+  private readonly ILogger<NodeController> _logger;
 
-  public NodeController(Raft.Node node)
+  public NodeController(Raft.Node node, ILogger<NodeController> logger)
   {
     _node = node;
+    _logger = logger;
   }
 
   [HttpGet("getLeader")]
@@ -38,26 +40,30 @@ public class NodeController : ControllerBase
   }
 
   [HttpPost("requestVote")]
-  public IActionResult RequestVote([FromBody] Guid candidateId, int candidateTerm)
+  public IActionResult RequestVote([FromBody] VoteRequest ballot)
   {
+    // _logger.LogInformation("Received vote request.");
+
     try
     {
-      bool vote = _node.Vote(candidateId, candidateTerm);
+      bool vote = _node.Vote(ballot.Id, ballot.Term);
 
       return Ok(vote);
     }
-    catch
+    catch (Exception e)
     {
+      _logger.LogError(e, "Error processing vote.");
+
       return StatusCode(500, "Internal server error while processing vote.");
     }
   }
 
   [HttpPost("sendHeartbeat")]
-  public IActionResult SendHeartbeat([FromBody] int term, Guid leaderId, List<LogEntry> entries)
+  public IActionResult SendHeartbeat([FromBody] HearbeatRequest heartbeat)
   {
     try
     {
-      _node.ReceiveHeartBeat(term, leaderId, entries);
+      _node.ReceiveHeartBeat(heartbeat);
 
       return Ok();
     }
@@ -70,51 +76,50 @@ public class NodeController : ControllerBase
   [HttpGet("eventualGet")]
   public ActionResult<(int? value, int logIndex)> EventualGet(string key)
   {
-    var (value, logIndex) = _node.EventualGet(key);
-    Console.WriteLine($"Key {key} got value {value} {logIndex}");
-    if (value.HasValue)
+    Data result = _node.EventualGet(key);
+
+    if (result != null)
     {
-      return Ok(new { value = value.Value, logIndex });
+      return Ok(new { value = result.Value, result.LogIndex });
     }
+    
     return NotFound();
   }
 
   [HttpGet("strongGet")]
   public ActionResult<(int? value, int logIndex)> StrongGet(string key)
   {
-    var (value, logIndex) = _node.StrongGet(key);
-    Console.WriteLine($"Key {key} got value {value} {logIndex}");
-    if (value.HasValue)
+    Data result = _node.StrongGet(key);
+
+    if (result != null)
     {
-      return Ok(new { value = value.Value, logIndex });
+      return Ok(new { value = result.Value, result.LogIndex });
     }
+
     return BadRequest("Not the leader or key does not exist.");
   }
 
   [HttpPost("compareVersionAndSwap")]
-  public ActionResult<bool> CompareVersionAndSwap([FromForm] string key, [FromForm] int expectedValue, [FromForm] int newValue, [FromForm] int expectedLogIndex)
+  public ActionResult<bool> CompareVersionAndSwap([FromForm] string key, [FromForm] string expectedValue, [FromForm] string newValue)
   {
-    var success = _node.CompareVersionAndSwap(key, expectedValue, newValue, expectedLogIndex);
+    var success = _node.CompareVersionAndSwap(key, expectedValue, newValue);
+    
     return Ok(success);
   }
 
   [HttpPost("write")]
-  public ActionResult<bool> Write([FromBody] string key, int value)
+  public ActionResult<bool> Write([FromBody] WriteRequest write)
   {
-    var payload = new
-    {
-      Key = key,
-      Value = value
-    };
-
-    if (payload == null)
+    if (write == null)
       return BadRequest("Invalid request payload.");
 
-    var success = _node.Write(payload.Key, payload.Value);
+    var success = _node.Write(write.Key, write.Value);
+
     if (success)
     {
       return Ok(true);
     }
+
     return BadRequest("Not the leader or operation failed.");
   }
 }

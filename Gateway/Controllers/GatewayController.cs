@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Raft.Shared;
 
 namespace Gateway.GatewayController;
 
@@ -7,10 +8,12 @@ namespace Gateway.GatewayController;
 public class GatewayController : ControllerBase
 {
   private Raft.Gateway _gateway;
+  private readonly ILogger<GatewayController> _logger;
 
-  public GatewayController(Raft.Gateway gateway)
+  public GatewayController(Raft.Gateway gateway, ILogger<GatewayController> logger)
   {
     _gateway = gateway;
+    _logger = logger;
   }
 
   [HttpGet("EventualGet")]
@@ -31,26 +34,25 @@ public class GatewayController : ControllerBase
   }
 
   [HttpGet("StrongGet")]
-  public async Task<ActionResult> StrongGet(string key)
+  public async Task<ActionResult<Data>> StrongGet(string key)
   {
     var result = await _gateway.StrongGet(key);
 
-    if (result.HasValue)
+    if (result != null)
     {
-      var (value, logIndex) = result.Value;
-
-      return Ok(new { value, logIndex });
+      return Ok(result);
     }
     else
     {
-      return NotFound("No value");
+      return NotFound("No value was found for key");
     }
   }
 
   [HttpPost("CompareVersionAndSwap")]
-  public async Task<ActionResult<bool>> CompareVersionAndSwap(string key, int expectedValue, int newValue)
+  public async Task<ActionResult<bool>> CompareVersionAndSwap(string key, string expectedValue, string newValue)
   {
     var result = await _gateway.CompareVersionAndSwap(key, expectedValue, newValue);
+    
     return Ok(result);
   }
 

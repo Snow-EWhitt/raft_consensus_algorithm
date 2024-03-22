@@ -11,6 +11,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Node", "Node\Node.csproj", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Gateway", "Gateway\Gateway.csproj", "{A793D9EC-8567-426D-B0D4-B92FF1C86B3D}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Raft.Web", "Raft.Web\Raft.Web.csproj", "{8F2592CB-A95E-4847-8851-60B1E36082E4}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Raft.Shared", "Raft.Shared\Raft.Shared.csproj", "{08B6E894-AA64-45BA-AF2E-2F5E228CA79D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -36,5 +40,13 @@ Global
 		{A793D9EC-8567-426D-B0D4-B92FF1C86B3D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A793D9EC-8567-426D-B0D4-B92FF1C86B3D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A793D9EC-8567-426D-B0D4-B92FF1C86B3D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8F2592CB-A95E-4847-8851-60B1E36082E4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8F2592CB-A95E-4847-8851-60B1E36082E4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8F2592CB-A95E-4847-8851-60B1E36082E4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8F2592CB-A95E-4847-8851-60B1E36082E4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{08B6E894-AA64-45BA-AF2E-2F5E228CA79D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{08B6E894-AA64-45BA-AF2E-2F5E228CA79D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{08B6E894-AA64-45BA-AF2E-2F5E228CA79D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{08B6E894-AA64-45BA-AF2E-2F5E228CA79D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

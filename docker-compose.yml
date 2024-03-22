@@ -1,6 +1,15 @@
 version: "3"
 
 services:
+  ethan-raft-web:
+    container_name: ethan-raft-web
+    image: web
+    build:
+      context: .
+      dockerfile: Raft.Web/Dockerfile
+    ports:
+      - 8080:80
+
   ethan-raft-gateway:
     container_name: ethan-raft-gateway
     image: gateway
@@ -10,7 +19,7 @@ services:
     ports:
       - 5000:8080
     environment:
-      - NODES="ethan-raft-node-1,ethan-raft-node-2,ethan-raft-node-3"
+      - NODES=ethan-raft-node-1:8080,ethan-raft-node-2:8080,ethan-raft-node-3:8080
 
   ethan-raft-node-1:
     container_name: ethan-raft-node-1
@@ -21,9 +30,9 @@ services:
     ports:
       - 5005:8080
     environment:
-      - NODES="ethan-raft-node-2,ethan-raft-node-3"
+      - NODES=ethan-raft-node-2:8080,ethan-raft-node-3:8080
 
-  ethan-raft-ethan-raft-node-2:
+  ethan-raft-node-2:
     container_name: ethan-raft-node-2
     image: node
     build:
@@ -32,7 +41,7 @@ services:
     ports:
       - 5006:8080
     environment:
-      - NODES="ethan-raft-node-1,ethan-raft-node-3"
+      - NODES=ethan-raft-node-1:8080,ethan-raft-node-3:8080
 
   ethan-raft-node-3:
     container_name: ethan-raft-node-3
@@ -43,7 +52,7 @@ services:
     ports:
       - 5007:8080
     environment:
-      - NODES="ethan-raft-node-1,ethan-raft-node-2"
+      - NODES=ethan-raft-node-1:8080,ethan-raft-node-2:8080
 
   ethan-raft-otel-collector:
     container_name: ethan-raft-otel-collector
