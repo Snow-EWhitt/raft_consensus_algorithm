@@ -33,7 +33,7 @@
 
   private async Task LoadQuantity()
   {
-    var result = await _service.StrongGet(Product.Name);
+    var result = await _service.StrongGet($"stock-of {Product.Name}");
     lastData = result;
     
     if (result.LogIndex != -1)
@@ -50,7 +50,7 @@
 
     if (newQuantity >= 0)
     {
-      await _service.UpdateData(Product.Name, lastData.Value, JsonSerializer.Serialize(newQuantity));
+      await _service.UpdateData($"stock-of {Product.Name}", lastData.Value, JsonSerializer.Serialize(newQuantity));
 
       await LoadQuantity();
     }
@@ -62,10 +62,9 @@
 
     if (newQuantity >= 0)
     {
-      await _service.UpdateData(Product.Name, lastData.Value, JsonSerializer.Serialize(newQuantity));
+      await _service.UpdateData($"stock-of {Product.Name}", lastData.Value, JsonSerializer.Serialize(newQuantity));
 
       await LoadQuantity();
     }
   }
-
 }

@@ -50,7 +50,7 @@
 
   private async Task GetBalance()
   {
-    lastBalanceInfo = await _service.StrongGet(_username);
+    lastBalanceInfo = await _service.StrongGet($"balance-of {_username}");
 
     if (lastBalanceInfo.LogIndex != -1)
     {
@@ -68,7 +68,7 @@
 
     if (_depositAmount > 0 && newBalance >= 0)
     {
-      await _service.UpdateData(_username, lastBalanceInfo.Value, JsonSerializer.Serialize(newBalance));
+      await _service.UpdateData($"balance-of {_username}", lastBalanceInfo.Value, JsonSerializer.Serialize(newBalance));
     }
   
     _depositAmount = 0;
@@ -81,7 +81,7 @@
 
     if (_withdrawalAmount > 0 && newBalance >= 0)
     {
-      await _service.UpdateData(_username, lastBalanceInfo.Value, JsonSerializer.Serialize(newBalance));
+      await _service.UpdateData($"balance-of {_username}", lastBalanceInfo.Value, JsonSerializer.Serialize(newBalance));
     }
   
     _withdrawalAmount = 0;

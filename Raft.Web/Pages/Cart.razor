@@ -1,0 +1,193 @@
+@using System.Text.Json;
+@using Raft.Web.Models;
+@using Raft.Web.Components;
+@using Raft.Web.Services;
+@using Raft.Shared;
+
+@inject GatewayService _service;
+
+@page "/order"
+
+<PageTitle>Order</PageTitle>
+
+<form @onsubmit="LoadCartData">
+  <div class="mb-3">
+    <label for="username" class="form-label">Username:</label>
+    <InputText id="username" class="form-control" @bind-Value="_username" />
+  </div>
+  <button type="submit" class="btn btn-primary">Submit</button>
+</form>
+
+@if (_username != null)
+{
+  <h2 class="mt-3">Products</h2>
+
+  @foreach (var product in _products)
+  {
+    if (product.Quantity <= 0)
+      continue;
+    
+    <div type="button" class="card mb-3" style="width: 18rem" @onclick="() => AddToCart(product)">
+      <div class="card-body">
+        <h5 class="card-title">@product.Name</h5>
+        <p class="card-text">Cost: $@product.Cost</p>
+        <p class="col-auto card-text">@(product.Quantity) remaining</p>
+      </div>
+    </div>
+  }
+
+  <div class="row">
+    <h2 class="col col-2">Cart</h2>
+    <div class="col col-2">
+      <button class="btn btn-primary" @onclick="() => Checkout()">Checkout</button>
+    </div>
+  </div>
+
+  @foreach (var item in _cart.Products)
+  {
+    <div class="list-group-item list-group-item-action" style="width: 18rem" type="button" @onclick="() => RemoveFromCart(item)">
+      <p class="me-3 fw-bold">@(item.Name)</p>
+      <div class="d-flex">
+        <p class="me-auto">$@(item.Cost)</p>
+        <p>Qty: @(item.Quantity)</p>
+      </div>
+    </div>
+  }
+}
+
+@code {
+  private string _username;
+  private List<Product> _products = new();
+  public Models.Cart _cart = new();
+  private Data _lastCartInfo;
+
+  private async Task LoadCartData()
+  {
+    _cart.Username = _username;
+
+    _products = new()
+    {
+      new Product("Headset", 1.00m),
+      new Product("Mouse", 1.00m),
+      new Product("Keyboard", 1.00m),
+      new Product("Monitor", 1.00m),
+      new Product("Desktop PC", 1.00m)
+    };
+
+    foreach (var product in _products)
+    {
+      var productResult = await _service.StrongGet($"stock-of {product.Name}");
+      
+      product.Quantity = int.Parse(productResult.Value);
+    }
+
+    var cartResult = await _service.StrongGet($"cart-of {_username}");
+    _lastCartInfo = cartResult;
+
+    if (cartResult.LogIndex != -1)
+    {
+      _cart = JsonSerializer.Deserialize<Models.Cart>(cartResult.Value);
+    }
+
+    StateHasChanged();
+  }
+
+  private async Task AddToCart(Product product)
+  {
+    Product cartItem = _cart.Products.FirstOrDefault(i => i.Name == product.Name);
+
+    if (cartItem != null)
+    {
+      cartItem.Quantity += 1;
+    }
+    else
+    {
+      var newCartItem = new Product(product.Name, product.Cost);
+      newCartItem.Quantity = 1;
+
+      _cart.Products.Add(newCartItem);
+    }
+
+    string payload = JsonSerializer.Serialize(_cart);
+
+    await _service.UpdateData($"cart-of {_username}", _lastCartInfo.Value, payload);
+    await LoadCartData();
+  }
+
+  private async Task RemoveFromCart(Product cartItem)
+  {
+    if (cartItem.Quantity - 1 == 0)
+    {
+      _cart.Products.Remove(cartItem);
+    }
+    else
+    {
+      cartItem.Quantity -= 1;
+    }
+
+    string payload = JsonSerializer.Serialize(_cart);
+
+    await _service.UpdateData($"cart-of {_username}", _lastCartInfo.Value, payload);
+    await LoadCartData();
+  }
+
+  private async Task Checkout()
+  {
+    Guid orderId = Guid.NewGuid();
+
+    string order = JsonSerializer.Serialize(_cart);
+
+    await _service.UpdateData($"order-info {orderId}", "None", order);
+    await UpdateOrderStatus(orderId, "pending");
+
+    DateTime timeout = DateTime.UtcNow.AddSeconds(30);
+    bool updateSuccessful = false;
+
+    while (DateTime.UtcNow < timeout && !updateSuccessful)
+    {
+      try
+      {
+        Data result = await _service.StrongGet("pending-orders");
+        Guid[] pendingOrders = await GetPendingOrders();
+        pendingOrders = [.. pendingOrders, orderId];
+        string newPendingOrders = JsonSerializer.Serialize(pendingOrders);
+        
+        await _service.UpdateData("pending-orders", result.Value, newPendingOrders);
+
+        updateSuccessful = true;
+      }
+      catch (Exception ex)
+      {
+        await Task.Delay(1000);
+      }
+    }
+
+    await ClearCart();
+  }
+
+  private async Task UpdateOrderStatus(Guid id, string newStatus)
+  {
+    Data status = await _service.StrongGet($"order-status {id}");
+
+    await _service.UpdateData($"order-status {id}", status.Value, newStatus);
+  }
+
+  private async Task<Guid[]> GetPendingOrders()
+  {
+    Guid[] pendingOrders = [];
+    Data result = await _service.StrongGet("pending-orders");
+
+    if (result.LogIndex != -1)
+      pendingOrders = JsonSerializer.Deserialize<Guid[]>(result.Value) ?? [];
+    
+    return pendingOrders;
+  }
+
+  public async Task ClearCart()
+  {
+    _cart.Products = [];
+    var newCart = JsonSerializer.Serialize(_cart);
+
+    await _service.UpdateData($"cart-of {_cart.Username}", _lastCartInfo.Value, newCart);
+  }
+}

@@ -1,0 +1,271 @@
+@using System.Text.Json;
+@using Raft.Web.Models;
+@using Raft.Web.Services;
+@using Raft.Shared;
+
+@inject GatewayService _service;
+
+@if (_cart != null)
+{
+  <li class="list-group-item d-flex">
+    <p class="me-3"><strong>Order ID:</strong> @(OrderId)</p>
+    <p class="me-3"><strong>Status:</strong> @(_status)</p>
+    <p class="me-auto"><strong>Total:</strong> $@(_total)</p>
+    <button class="btn btn-outline-primary m-0" @onclick="() => Process()">Process</button>
+  </li>
+}
+
+@code {
+  [Parameter]
+  public Guid OrderId { get; set; }
+
+  [Parameter]
+  public EventCallback OnOrderProcessed { get; set; }
+
+  private Models.Cart? _cart;
+  private decimal? _total => _cart?.Products.Sum(p => p.Cost * p.Quantity);
+  private string _status = "";
+  private decimal? _userBalance;
+  private decimal? _vendorBalance;
+  private List<Func<Task>> compensatingActions = new();
+
+  protected override async Task OnInitializedAsync()
+  {
+    await Load();
+  }
+
+  private async Task Load()
+  {
+    (_cart, _status) = await GetOrder(OrderId);
+
+    Console.WriteLine($"Cart: {_cart}");
+    Console.WriteLine($"Products: {_cart.Products[0]}");
+    Console.WriteLine($"User: {_cart.Username}");
+
+    if (_cart != null)
+    {
+      var balanceResult = await _service.StrongGet($"balance-of {_cart.Username}");
+      _userBalance = decimal.Parse(balanceResult.Value);
+
+      var vendorResult = await _service.StrongGet("balance-of vendor");
+      _vendorBalance = decimal.Parse(vendorResult.Value);
+    }
+  }
+
+  public async Task<(Models.Cart?, string)> GetOrder(Guid id)
+  {
+    var cartResult = await _service.StrongGet($"order-info {id}");
+    Console.WriteLine($"Cart result: {cartResult.Value}");
+    var cart = JsonSerializer.Deserialize<Cart>(cartResult.Value);
+    Console.WriteLine($"Cart: {cart}");
+    var statusResult = await _service.StrongGet($"order-status {id}");
+
+    return (cart, statusResult.Value);
+  }
+
+  private async Task Process()
+  {
+    if (_cart != null && _total.HasValue && _userBalance.HasValue && _vendorBalance.HasValue)
+    {
+      var processorId = Guid.NewGuid();
+      compensatingActions = [];
+
+      try
+      {
+        await WithdrawUserBalance();
+        await DecreaseStock();
+        await DepositVendorBalance();
+        await UpdateOrderStatusToProcessed(processorId);
+        await RemoveOrderFromPending();
+      }
+      catch
+      {
+        foreach (var action in compensatingActions)
+        {
+          await action();
+        }
+
+        await RejectOrder(processorId);
+      }
+    }
+  }
+
+  private async Task WithdrawUserBalance()
+  {
+    var balanceResult = await _service.StrongGet($"balance-of {_cart.Username}");
+
+    await SubmitWithdrawal(_userBalance, _total ?? 0, _cart.Username, balanceResult);
+    compensatingActions.Add(CompensateUserBalanceWithdrawal);
+  }
+
+  private async Task SubmitWithdrawal(decimal? balance, decimal amount, string username, Data balanceResult)
+  {
+    decimal newBalance = (balance ?? 0) - amount;
+
+    await _service.UpdateData($"balance-of {username}", balanceResult.Value, JsonSerializer.Serialize(newBalance));
+  }
+
+  private async Task CompensateUserBalanceWithdrawal()
+  {
+    var balanceResult = await _service.StrongGet($"balance-of {_cart.Username}");
+    await SubmitDeposit(_userBalance, _total ?? 0, _cart.Username, balanceResult);
+  }
+
+  private async Task SubmitDeposit(decimal? balance, decimal amount, string username, Data balanceResult)
+  {
+    decimal newBalance = (balance ?? 0) + amount;
+
+    if (newBalance >= 0)
+    {
+      await _service.UpdateData($"balance-of {username}", balanceResult.Value, JsonSerializer.Serialize(newBalance));
+    }
+  }
+
+  private async Task DecreaseStock()
+  {
+    foreach (var item in _cart.Products)
+    {
+      Data productResult = await _service.StrongGet($"stock-of {item.Name}");
+      int amount = int.Parse(productResult.Value);
+
+      await DecreaseQuantity($"stock-of {item.Name}", item.Quantity, productResult, amount);
+    }
+
+    foreach (var item in _cart.Products)
+    {
+      compensatingActions.Add(() => CompensateStockDecrease(item));
+    }
+  }
+
+  private async Task DecreaseQuantity(string key, int quantity, Data productResult, int amount)
+  {
+    int newQuantity = amount - quantity;
+
+    if (newQuantity >= 0)
+      await _service.UpdateData(key, productResult.Value, JsonSerializer.Serialize(newQuantity));
+  }
+
+  private async Task CompensateStockDecrease(Product item)
+  {
+    var productResult = await _service.StrongGet($"stock-of {item.Name}");
+    int amount = int.Parse(productResult.Value);
+
+    if (item.Quantity > 0)
+    {
+      await IncreaseQuantity($"stock-of {item.Name}", item.Quantity, productResult, amount);
+    }
+  }
+
+  private async Task IncreaseQuantity(string key, int quantity, Data productResult, int amount)
+  {
+    int newQuantity = quantity + amount;
+
+    await _service.UpdateData(key, productResult.Value, JsonSerializer.Serialize(newQuantity));
+  }
+
+  private async Task DepositVendorBalance()
+  {
+    var vendorResult = await _service.StrongGet("balance-of vendor");
+
+    await SubmitDeposit(_vendorBalance, _total ?? 0, "vendor", vendorResult);
+    compensatingActions.Add(CompensateVendorBalanceDeposit);
+  }
+
+  private async Task CompensateVendorBalanceDeposit()
+  {
+    var vendorResult = await _service.StrongGet("balance-of vendor");
+    await SubmitWithdrawal(_vendorBalance, _total ?? 0, "vendor", vendorResult);
+  }
+
+  private async Task UpdateOrderStatusToProcessed(Guid processorId)
+  {
+    var status = $"Processed By {processorId}";
+    var orderStatus = await _service.StrongGet($"order-status {OrderId}");
+
+    if (!orderStatus.Value.Contains("Processed"))
+    {
+      await UpdateOrderStatus(OrderId, status);
+    }
+
+    compensatingActions.Add(() => CompensateOrderStatusUpdate(processorId));
+  }
+
+  private async Task UpdateOrderStatus(Guid id, string newStatus)
+  {
+    Data status = await _service.StrongGet($"order-status {id}");
+
+    await _service.UpdateData($"order-status {id}", status.Value, newStatus);
+  }
+
+  private async Task CompensateOrderStatusUpdate(Guid processorId)
+  {
+    var status = $"pending from processor {processorId}";
+
+    await UpdateOrderStatus(OrderId, status);
+  }
+
+  private async Task RemoveOrderFromPending()
+  {
+    await RemovePendingOrder(OrderId);
+    await OnOrderProcessed.InvokeAsync();
+
+    compensatingActions.Add(CompensateRemoveOrderFromPending);
+  }
+
+  public async Task RemovePendingOrder(Guid id)
+  {
+    DateTime timeout = DateTime.UtcNow.AddSeconds(30);
+    bool updateSuccessful = false;
+
+    while (DateTime.UtcNow < timeout && !updateSuccessful)
+    {
+      try
+      {
+        var result = await _service.StrongGet("pending-orders");
+        var pendingOrders = await GetPendingOrders();
+        var remainingOrders = JsonSerializer.Serialize(pendingOrders.Where(p => p != id));
+        await _service.UpdateData("pending-orders", result.Value, remainingOrders);
+
+        updateSuccessful = true;
+      }
+      catch (Exception ex)
+      {
+        await Task.Delay(1000);
+      }
+    }
+  }
+
+  private async Task<Guid[]> GetPendingOrders()
+  {
+    Guid[] pendingOrders = [];
+    Data result = await _service.StrongGet("pending-orders");
+
+    if (result.LogIndex != -1)
+      pendingOrders = JsonSerializer.Deserialize<Guid[]>(result.Value) ?? [];
+    
+    return pendingOrders;
+  }
+
+  private async Task CompensateRemoveOrderFromPending()
+  {
+    await AddPendingOrder(OrderId);
+    await OnOrderProcessed.InvokeAsync();
+  }
+
+  public async Task AddPendingOrder(Guid id)
+  {
+    var result = await _service.StrongGet("pending-orders");
+    var pendingOrders = await GetPendingOrders();
+    pendingOrders = [.. pendingOrders, id];
+    var newPendingOrders = JsonSerializer.Serialize(pendingOrders);
+
+    await _service.UpdateData("pending-orders", result.Value, newPendingOrders);
+  }
+
+  private async Task RejectOrder(Guid processorId)
+  {
+    var status = $"Rejected by {processorId}";
+
+    await UpdateOrderStatus(OrderId, status);
+  }
+}

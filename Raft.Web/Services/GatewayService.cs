@@ -20,6 +20,9 @@ public class GatewayService
 
     var result = await _httpClient.GetFromJsonAsync<Data>($"/Gateway/StrongGet?key={key}");
 
+    if (result?.Value == "")
+      result.Value = "None";
+
     if (result != null)
       return result;
     else
@@ -30,9 +33,11 @@ public class GatewayService
   {
     _logger.LogInformation($"Updating data for key: {key}.");
 
-    var response = await _httpClient.PostAsync("/Gateway/CompareVersionAndSwap" +
+    await _httpClient.PostAsync("/Gateway/CompareVersionAndSwap" +
       $"?key={key}" +
       $"&expectedValue={expectedValue}" +
       $"&newValue={newValue}", null);
+
+    _logger.LogInformation($"Key: {key}, ExpectedValue: {expectedValue} Value: {newValue}.");
   }
 }

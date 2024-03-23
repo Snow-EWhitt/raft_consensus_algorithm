@@ -1,0 +1,51 @@
+@using System.Text.Json;
+@using Raft.Web.Components;
+@using Raft.Web.Services;
+@using Raft.Shared;
+
+@inject GatewayService _service;
+
+@page "/status"
+
+<div class="container">
+  <h3>Pending Orders</h3>
+
+  <ul class="list-group">
+    @foreach (var orderId in _orders)
+    {
+      <Order OrderId="@orderId" OnOrderProcessed="Load" />
+    }
+  </ul>
+
+  @if (_orders.Length == 0)
+  {
+    <div>All caught up. No pending orders at this time.</div>
+  }
+</div>
+
+@code {
+  private Guid[] _orders = [];
+
+  protected override async Task OnInitializedAsync()
+  {
+    Load();
+  }
+
+  private async Task Load()
+  {
+    _orders = await GetPendingOrders();
+
+    StateHasChanged();
+  }
+
+  private async Task<Guid[]> GetPendingOrders()
+  {
+    Guid[] pendingOrders = [];
+    Data result = await _service.StrongGet("pending-orders");
+
+    if (result.LogIndex != -1)
+      pendingOrders = JsonSerializer.Deserialize<Guid[]>(result.Value) ?? [];
+    
+    return pendingOrders;
+  }
+}
