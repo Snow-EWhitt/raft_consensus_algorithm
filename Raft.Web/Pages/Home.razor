@@ -18,7 +18,7 @@
 
 @if (_username != null)
 {
-  <p class="mt-4">Your balance is: @($"${_balance:0.00}")</p>
+  <p class="mt-4">Your balance is: $@(_balance == null ? "0.00" : $"{_balance:0.00}")</p>
 
   <div class="row mx-2 justify-content-between">
     <div class="col col-5">
